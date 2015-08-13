@@ -8,24 +8,27 @@ using namespace cv;
 using namespace std;
 
 int main (int argc, char** argv) {
-  transform();
-  /*if (argc != 2) {
+  if (argc != 2) {
     cout << "Usage: display_image ImageToLoadAndDisplay" << endl;
     return -1;
   }
 
-  Mat* imageMat = new Mat;
-  *imageMat = imread(argv[1], CV_LOAD_IMAGE_COLOR); // Read the file.
-  if (!imageMat->data) {
+  Mat imageMat;
+  imageMat = imread(argv[1], CV_LOAD_IMAGE_COLOR); // Read the file.
+  if (!imageMat.data) {
     cout << "Could not open or find the image." << endl;
     return -1;
   }
-  imageVector = matToVector(*imageMat);
-  delete imageMat;
 
-  namedWindow("Display window", WINDOW_AUTOSIZE); // Create a window for display.
-  imshow("Display window", *imageMat);
+  /*
+    TODO: Add image processing functions here.
+  */
 
-  waitKey(0);*/
+  transform();
+
+  namedWindow("Filtered Image", WINDOW_AUTOSIZE); // Create a window for display.
+  imshow("Filtered Image", imageMat);
+
+  waitKey(0);
   return 0;
 }

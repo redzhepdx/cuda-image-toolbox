@@ -11,32 +11,30 @@
 using namespace cv;
 using namespace std;
 
-__global__ void filter(uchar* d_input, uchar* d_output,\
-  int rows, int cols, int filterWidth) {
+__global__ void filterTest(uchar *d_img, uchar *d_filter, uchar *d_out,
+						   int imgRow, int imgCol ,int filterWidth){
+						   int idx=threadIdx.x+blockDim.x*blockIdx.x;
+						   int idy=threadIdx.y+blockDim.y*blockIdx.y;
+						   int gid=idy*imgCol+idx;
 
-  int idx = threadIdx.x + blockDim.x * blockIdx.x;
-  int idy = threadIdx.y + blockDim.y * blockIdx.y;
-  int globalId = idy * cols + idx;
+						   if(idx>=imgCol || idy>=imgRow)
+							   return;
 
-  if (idx >= cols) {
-    if (idy >= rows) {
-      return; //Invalid location, do nothing.
-    }
-  }
+						   int result = 0;
 
-  unsigned int result = 0;
-  for (int i = -filterWidth/2; i <= filterWidth/2; i++) {
-    for (int j = -filterWidth/2; j <= filterWidth/2; j++) {
-      int x = idx + i;
-      int y = idy + j;
-      if (y >= 0 && x >= 0 && y < rows && x < cols) {
-        result += d_input[y * cols + x];
-      }
-    }
-  }
-  result = result / 9;
-  d_output[globalId] = (uchar) result;
+						   for(int a = -filterWidth/2; a <= filterWidth/2; ++a){
+								for(int b = -filterWidth/2; b <= filterWidth/2; ++b){
+									int newIdx = idx + b;
+									int newIdy = idy + a;
+									int filterIndex = (a + filterWidth/2)*filterWidth + (b + filterWidth/2);
+									if( newIdy >= 0 && newIdy < imgRow && newIdx >= 0 && newIdx < imgCol)
+									result += d_filter[filterIndex] * d_img[newIdy * imgCol + newIdx];
+							    }
+						   }
+
+						   d_out[gid]=(uchar) (result/9);
 }
+
 
 void transform(){
 	const int filterWidth=3;
@@ -44,8 +42,8 @@ void transform(){
 	uchar *d_img,*d_filter,*d_out;
   Mat img;
   Mat image;
+  image = imread("./test.png", CV_LOAD_IMAGE_COLOR);
   img = imread("./test.png", CV_LOAD_IMAGE_COLOR);
-  image = Mat::zeros(img.rows, img.cols, CV_8UC3);
   int Rows = img.rows;
 	int Cols = img.cols;
   int imgRow = Rows;
@@ -76,7 +74,8 @@ void transform(){
 	cudaMemcpy(d_filter,h_filter,sizeof(uchar)*filterWidth*filterWidth,cudaMemcpyHostToDevice);
 	cudaMalloc((void**)&d_out,sizeof(uchar)*imgRow*imgCol);
 
-  filter<<<dim3(1,imgRow,1),dim3(imgCol,1,1)>>>(d_img,d_out,imgRow,imgCol,filterWidth);
+	filterTest<<<dim3(1,imgRow,1),dim3(imgCol,1,1)>>>(d_img,d_filter,d_out,imgRow,imgCol,filterWidth);
+
 	cudaMemcpy(h_out,d_out,sizeof(uchar)*imgRow*imgCol,cudaMemcpyDeviceToHost);
 
   for (int i=0; i < img.rows; i++) {
@@ -84,8 +83,6 @@ void transform(){
       image.at<cv::Vec3b>(i, j)[2] = h_out[i][j];
     }
   }
-  imshow("Display window", image);
-  waitKey(0);
 
   /**********/
   cudaMalloc((void**)&d_img,sizeof(uchar)*imgRow*imgCol);
@@ -94,7 +91,7 @@ void transform(){
   cudaMemcpy(d_filter,h_filter,sizeof(uchar)*filterWidth*filterWidth,cudaMemcpyHostToDevice);
   cudaMalloc((void**)&d_out,sizeof(uchar)*imgRow*imgCol);
 
-  filter<<<dim3(1,imgRow,1),dim3(imgCol,1,1)>>>(d_img,d_out,imgRow,imgCol,filterWidth);
+  filterTest<<<dim3(1,imgRow,1),dim3(imgCol,1,1)>>>(d_img,d_filter,d_out,imgRow,imgCol,filterWidth);
 
   cudaMemcpy(h_out,d_out,sizeof(uchar)*imgRow*imgCol,cudaMemcpyDeviceToHost);
   for (int i=0; i < img.rows; i++) {
@@ -102,8 +99,6 @@ void transform(){
       image.at<cv::Vec3b>(i,j)[1] = h_out[i][j];
     }
   }
-  imshow("Display window", image);
-  waitKey(0);
 
   cudaMalloc((void**)&d_img,sizeof(uchar)*imgRow*imgCol);
   cudaMemcpy(d_img,imgB,sizeof(uchar)*imgRow*imgCol,cudaMemcpyHostToDevice);
@@ -111,7 +106,8 @@ void transform(){
   cudaMemcpy(d_filter,h_filter,sizeof(uchar)*filterWidth*filterWidth,cudaMemcpyHostToDevice);
   cudaMalloc((void**)&d_out,sizeof(uchar)*imgRow*imgCol);
 
-  filter<<<dim3(1,imgRow,1),dim3(imgCol,1,1)>>>(d_img,d_out,imgRow,imgCol,filterWidth);
+  filterTest<<<dim3(1,imgRow,1),dim3(imgCol,1,1)>>>(d_img,d_filter,d_out,imgRow,imgCol,filterWidth);
+
   cudaMemcpy(h_out,d_out,sizeof(uchar)*imgRow*imgCol,cudaMemcpyDeviceToHost);
 
   for (int i=0; i < img.rows; i++) {
@@ -121,10 +117,6 @@ void transform(){
   }
   imshow("Display window", image);
   waitKey(0);
-
-}
-
-void foo() {
 
 }
 #endif
