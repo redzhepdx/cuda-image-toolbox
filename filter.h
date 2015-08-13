@@ -18,6 +18,9 @@ __global__ void filter(uchar* d_input, uchar* d_output,\
   int idy = threadIdx.y + blockDim.y * blockIdx.y;
   int globalId = idy * cols + idx;
 
+  d_output[globalId] = d_input[idy * cols + idx];
+  return;
+
   if (idx >= cols) {
     if (idy >= rows) {
       return; //Invalid location, do nothing.
@@ -78,15 +81,23 @@ void transform(){
 
   filter<<<dim3(1,imgRow,1),dim3(imgCol,1,1)>>>(d_img,d_out,imgRow,imgCol,filterWidth);
 	cudaMemcpy(h_out,d_out,sizeof(uchar)*imgRow*imgCol,cudaMemcpyDeviceToHost);
-
+  /*for (int i=0; i < img.rows; i++) {
+    for (int j=0; j < img.cols; j++) {
+      printf("%u\t", imgR[i][j]);
+    }
+    puts("");
+  }
+  printf("********************\n");
   for (int i=0; i < img.rows; i++) {
     for (int j=0; j < img.cols; j++) {
+      printf("%u\t", h_out[i][j]);
       image.at<cv::Vec3b>(i, j)[2] = h_out[i][j];
     }
-  }
+    puts("");
+  }*/
   imshow("Display window", image);
   waitKey(0);
-
+  printf("********************\n");
   /**********/
   cudaMalloc((void**)&d_img,sizeof(uchar)*imgRow*imgCol);
   cudaMemcpy(d_img,imgG,sizeof(uchar)*imgRow*imgCol,cudaMemcpyHostToDevice);
@@ -99,9 +110,12 @@ void transform(){
   cudaMemcpy(h_out,d_out,sizeof(uchar)*imgRow*imgCol,cudaMemcpyDeviceToHost);
   for (int i=0; i < img.rows; i++) {
     for (int j=0; j < img.cols; j++) {
+      //printf("%u\t", h_out[i][j]);
       image.at<cv::Vec3b>(i,j)[1] = h_out[i][j];
     }
+    puts("");
   }
+  printf("********************\n");
   imshow("Display window", image);
   waitKey(0);
 
@@ -113,11 +127,19 @@ void transform(){
 
   filter<<<dim3(1,imgRow,1),dim3(imgCol,1,1)>>>(d_img,d_out,imgRow,imgCol,filterWidth);
   cudaMemcpy(h_out,d_out,sizeof(uchar)*imgRow*imgCol,cudaMemcpyDeviceToHost);
-
   for (int i=0; i < img.rows; i++) {
     for (int j=0; j < img.cols; j++) {
+      printf("%u\t", imgR[i][j]);
+    }
+    puts("");
+  }
+  printf("********************\n");
+  for (int i=0; i < img.rows; i++) {
+    for (int j=0; j < img.cols; j++) {
+      printf("%u\t", h_out[i][j]);
       image.at<cv::Vec3b>(i,j)[0] = h_out[i][j];
     }
+    puts("");
   }
   imshow("Display window", image);
   waitKey(0);
