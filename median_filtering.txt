@@ -7,7 +7,7 @@
 #include <opencv2/highgui/highgui.hpp>
 
 #include <iostream>
-#define filterWidth 3
+#define FILTER_WIDTH 3
 #define ELEM_SWAP(a,b) {register unsigned char t=(a);(a)=(b);(b)=t;}
 
 using namespace cv;
@@ -18,30 +18,38 @@ __global__ void medianFilter(unsigned char* d_input, unsigned char* d_output, in
 
 	int idx = threadIdx.x + blockIdx.x*blockDim.x;
 	int idy = threadIdx.y + blockIdx.y*blockDim.y;
+	int tidx = threadIdx.x;
+	int tidy = threadIdx.y;
+
+	//__shared__ unsigned char shared_filter[FILTER_WIDTH*FILTER_WIDTH];
 
 	int mid = idy*cols + idx;
-	int size = filterWidth*filterWidth;
+
+	int size = FILTER_WIDTH*FILTER_WIDTH;
+
+	
+	
 
 	if (idx >= cols || idy >= rows)
 		return;
 
 	unsigned char value;
 
-	unsigned char medianFilt[filterWidth*filterWidth];
+	unsigned char medianFilt[FILTER_WIDTH*FILTER_WIDTH];
 
-	for (int i = -filterWidth / 2; i <= filterWidth / 2; i++){
+	for (int i = -FILTER_WIDTH / 2; i <= FILTER_WIDTH / 2; i++){
 
-		for (int j = -filterWidth / 2; j <= filterWidth / 2; j++){
+		for (int j = -FILTER_WIDTH / 2; j <= FILTER_WIDTH / 2; j++){
 
 			int x = idx + i;
 			int y = idy + j;
 
-			int filt_x = i + filterWidth / 2;
-			int filt_y = j + filterWidth / 2;
+			int filt_x = i + FILTER_WIDTH / 2;
+			int filt_y = j + FILTER_WIDTH / 2;
 
 			if (x>1 && x<cols && y>1 && y<rows){
 
-				medianFilt[filt_y*filterWidth + filt_x] = d_input[y*cols + x];
+				medianFilt[filt_y*FILTER_WIDTH + filt_x] = d_input[y*cols + x];
 
 			}
 
@@ -50,7 +58,7 @@ __global__ void medianFilter(unsigned char* d_input, unsigned char* d_output, in
 	}
 
 	//QUICK_SELECT 
-	int low, high;
+	/*int low, high;
 	int median;
 	int middle, ll, hh;
 
@@ -91,12 +99,20 @@ __global__ void medianFilter(unsigned char* d_input, unsigned char* d_output, in
 
 		}
 
+	}*/
+	//SUCK  MY DICK QUICK SELECT
+	for (int i = 0; i < FILTER_WIDTH*FILTER_WIDTH - 1; i++){
+		for (int j = i + 1; j < FILTER_WIDTH*FILTER_WIDTH; j++){
+			if (medianFilt[i] < medianFilt[j]){
+				ELEM_SWAP(medianFilt[i], medianFilt[j]);
+			}
+		}
 	}
+	value = medianFilt[FILTER_WIDTH*FILTER_WIDTH / 2];
 
 	d_output[mid] = value;
-
+	
 }
-
 
 
 int main(){
@@ -106,7 +122,13 @@ int main(){
 	Mat image;
 	Mat img;
 
-	img = imread("images.jpg", CV_LOAD_IMAGE_COLOR);
+	img = imread("MFExample.jpg", CV_LOAD_IMAGE_COLOR);
+
+	if (!img.data){
+
+		printf("Couldn't open current image !!! ");
+		return -1;
+	}
 	image = Mat::zeros(img.rows, img.cols, CV_8UC3);
 
 	int Rows = img.rows;
@@ -120,9 +142,9 @@ int main(){
 
 		for (int j = 0; j<Cols; j++){
 			//B-G-R
-			imgB[i*Cols + j] = image.at<cv::Vec3b>(i, j)[0];
-			imgG[i*Cols + j] = image.at<cv::Vec3b>(i, j)[1];
-			imgR[i*Cols + j] = image.at<cv::Vec3b>(i, j)[2];
+			imgB[i*Cols + j] = img.at<cv::Vec3b>(i, j)[0];
+			imgG[i*Cols + j] = img.at<cv::Vec3b>(i, j)[1];
+			imgR[i*Cols + j] = img.at<cv::Vec3b>(i, j)[2];
 
 		}
 
@@ -130,11 +152,14 @@ int main(){
 
 	for (int i = 0; i < Rows; i++){
 		for (int j = 0; j < Cols; j++){
-			printf("%u ", imgB[i*Cols + j]);	
+			//printf("%u\t", imgB[i*Cols + j]);	
 		}
 		printf("\n");
 	}
-	printf("**************\n\n\n");
+	//printf("**************\n\n\n");
+	imshow("Display Window",img);
+	waitKey(0);
+
 
 	unsigned char* h_out=(unsigned char*)malloc(Rows*Cols*sizeof(unsigned char));
 
@@ -142,38 +167,41 @@ int main(){
 	cudaMemcpy(d_img, imgB, Rows*Cols*sizeof(unsigned char),cudaMemcpyHostToDevice);
 	cudaMalloc((void**)&d_out, Rows*Cols*sizeof(unsigned char));
 
-	dim3 blockSize(filterWidth, filterWidth, 1);
-	dim3 gridSize((Cols / blockSize.x) + 1, (Rows / blockSize.y) + 1, 1);
+	dim3 blockSize(FILTER_WIDTH, FILTER_WIDTH, 1);
+	dim3 gridSize((int)((Cols-1) / blockSize.x) + 1,(int)((Rows-1) / blockSize.y) + 1, 1);
 
-	medianFilter <<<gridSize, blockSize >>>(d_img, d_out, Rows, Cols);
+	medianFilter << <gridSize, blockSize >> >(d_img, d_out, Rows, Cols);
 	cudaMemcpy(h_out, d_out, Rows*Cols*sizeof(unsigned char),cudaMemcpyDeviceToHost);
 
 	for (int i = 0; i < Rows;i++){
 		for (int j = 0; j < Cols; j++){
-			printf("%u ", h_out[i*Cols + j]);
-			image.at<cv::Vec3b>(i, j)[0] = h_out[i*Cols + j];
+		//	printf("%u\t", h_out[i*Cols + j]);
+			img.at<cv::Vec3b>(i, j)[0] = h_out[i*Cols + j];
 		}
-		printf("\n");
+	//	printf("\n");
 	}
 	printf("**************\n\n\n");
-	//imshow("Display window", image);
-	//waitkey(0);
+	//imshow("Display Window", img);
+	//waitKey(0);
 
 	cudaMalloc((void**)&d_img,Rows*Cols*sizeof(unsigned char));
 	cudaMemcpy(d_img, imgG, Rows*Cols*sizeof(unsigned char), cudaMemcpyHostToDevice);
 	cudaMalloc((void**)&d_out, Rows*Cols*sizeof(unsigned char));
 
-	medianFilter <<<gridSize, blockSize >>>(d_img, d_out, Rows, Cols);
+	medianFilter << <gridSize, blockSize >> >(d_img, d_out, Rows, Cols);
 	cudaMemcpy(h_out, d_out, Rows*Cols*sizeof(unsigned char), cudaMemcpyDeviceToHost);
+
 
 	for (int i = 0; i < Rows; i++){
 		for (int j = 0; j < Cols; j++){
-			printf("%u ", h_out[i*Cols + j]);
-			image.at<cv::Vec3b>(i, j)[1] = h_out[i*Cols + j];
+			//printf("%u\t", h_out[i*Cols + j]);
+			img.at<cv::Vec3b>(i, j)[1] = h_out[i*Cols + j];
 		}
-		printf("\n");
+	//printf("\n");
 	}
-
+	//imshow("Display Window", img);
+	//waitKey(0);
+	//
 	printf("**************\n\n\n");
 
 	cudaMalloc((void**)&d_img,Rows*Cols*sizeof(unsigned char));
@@ -185,11 +213,13 @@ int main(){
 	
 	for (int i = 0; i < Rows; i++){
 		for (int j = 0; j < Cols; j++){
-			printf("%u ", h_out[i*Cols + j]);
-			image.at<cv::Vec3b>(i, j)[2] = h_out[i*Cols + j];
+			//printf("%u\t", h_out[i*Cols + j]);
+			img.at<cv::Vec3b>(i, j)[2] = h_out[i*Cols + j];
 		}
-		printf("\n");
+		//printf("\n");
 	}
+	imshow("Display window", img);
+	waitKey(0);
 
 	cudaFree(d_img);
 	cudaFree(d_out);
