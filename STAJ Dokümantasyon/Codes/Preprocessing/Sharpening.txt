@@ -1,0 +1,119 @@
+
+/* Sharp Filter */
+
+#include<stdio.h>
+#include<conio.h>
+#include<string.h>
+#include<graphics.h>
+#include<math.h>
+
+
+void sharpen();
+void rgb2gray();
+
+typedef struct bmp_header {
+    unsigned char ft[2];
+    unsigned long fsz;
+    unsigned int res1, res2;
+    unsigned long ofb, sz, wd, ht;
+    unsigned int npi, bpp;
+    unsigned long cps, isz, xres, yres;
+    unsigned long clru, clrimp;
+     }TH;
+TH *ihdr;
+int length, width, temp;
+unsigned char ch;
+unsigned char pixel[200][250];
+char file_name[14];
+int i, j,k;
+int w[3][3]={{0,-1,0},
+      {-1,5,1},
+      {0,-1,0}};
+
+void main()
+{
+ int n,m;
+ long int i,j;
+ FILE *imgf;
+ clrscr();
+ printf("\n\t SPATIAL FILTERING-SHARPNING FILTER\n");
+ printf("\nEnter the name of the file:-");
+ scanf("%s",file_name);
+ fflush(stdin);
+ imgf=fopen(file_name,"rb");
+ if(imgf==NULL)
+ {
+  printf("\n\a Error");
+  getch();
+  exit(0);
+ }
+ fread(ihdr, sizeof(TH), 1, imgf);
+ length=ihdr-> ht;
+ width=ihdr->wd;
+ for(i=0; i<length; i++)
+  for(j=0;j<width; j++)
+  {
+   temp=0;
+   for(k=0;k<3;k++)
+   {
+    ch=fgetc(imgf);
+    temp=temp+ch;
+   }
+   temp=temp/3;
+   pixel[i][j]=temp;
+  }
+ fclose(imgf);
+ rgb2gray();
+ sharpen();
+       // printf("\n\n To observe the gray scale image open SPATIAL1.bmp:");
+ printf("\n\n To observe the output image open SHARP.bmp");
+ getch();
+}
+
+
+void rgb2gray()
+{
+ FILE *imgf1;
+ imgf1=fopen("spatial1.bmp"," wb");
+ fwrite(ihdr, sizeof(TH), 1, imgf1);
+ for(i=0; i< length; i++)
+  for(j=0; j<width; j++)
+  {
+   for(k=0; k<3;k++)
+   {
+    fputc(pixel[i][j], imgf1);
+   }
+  }
+ fclose(imgf1);
+}
+
+void sharpen()
+{
+ FILE *imgf;
+ float temp1;
+ imgf=fopen("sharp.bmp","wb");
+ fwrite(ihdr, sizeof(TH),1, imgf);
+ for(i=0; i< length; i++)
+  for(j=0; j<width; j++)
+  {
+   if(i==0||j==0||i==(length-1)||j==(width-1))
+   {
+    temp=pixel[i][j];
+    fputc((int)temp,imgf);
+    fputc((int)temp,imgf);
+    fputc((int)temp,imgf);
+   }
+   else
+   {
+    temp=(((int)(pixel[i-1][j+1])*(w[0][2])) + ((int)(pixel[i-1][j-1]) * (w[0][0])) + ((int)(pixel[i-1][j]) * (w[0][1])) +((int)(pixel[i][j-1]) * (w[1][0])) + ((int)(pixel[i][j]) * (w[1][1]))+((int)(pixel[i][j+1]) * (w[1][2])) +((int)(pixel[i+1][j-1]) * (w[2][0])) +((int)(pixel[i+1][j]) * (w[2][1]))+((int)(pixel[i+1][j+1]) * (w[2][2])));
+    if(temp==0)
+     temp=pixel[i][j];
+    if(temp>=255)
+     temp=255;
+    fputc((int)temp,imgf);
+    fputc((int)temp,imgf);
+    fputc((int)temp,imgf);
+   }
+  }
+ fclose(imgf);
+}

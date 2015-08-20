@@ -1,0 +1,54 @@
+#include <iostream>
+#include <cmath>
+#include <iomanip>
+#define M_PI 3.0
+
+using namespace std;
+
+void createFilter(double *h_filter, int filterWidth )
+{
+	double sigma;
+	printf("\nsg:\t");
+	scanf("%lf", &sigma);
+	double r, s = 2.0 * sigma * sigma;
+
+	// sum is for normalization
+	double sum = 0.0;
+
+	// generate 5x5 kernel
+	for (int x = -filterWidth/2; x <= filterWidth/2; x++)
+	{
+		for (int y = -filterWidth / 2; y <= filterWidth / 2; y++)
+		{
+			r = sqrt(x*x + y*y);
+			h_filter[(x + (int)filterWidth / 2) * filterWidth + (y + (int)filterWidth / 2)] = (exp(-(r*r) / s)) / (M_PI * s);
+			sum += h_filter[(x + (int)filterWidth / 2) * filterWidth + (y + (int)filterWidth / 2)];
+		}
+	}
+
+	// normalize the Kernel
+	for (int i = 0; i < filterWidth ; ++i)
+		for (int j = 0; j < filterWidth ; ++j)
+			h_filter[i* filterWidth +j] /= sum;
+
+}
+
+int main()
+{
+
+	double *h_filter;
+	int filterWidth;
+	printf("\nfw:\t");
+	scanf("%d", &filterWidth);
+
+	
+	h_filter = (double*)malloc(filterWidth * filterWidth * sizeof(double));
+	
+	createFilter(h_filter,filterWidth);
+	for (int i = 0; i < filterWidth ; ++i)
+	{
+		for (int j = 0; j < filterWidth ; ++j)
+			cout << h_filter[i*filterWidth+j] << "\t";
+		cout << endl;
+	}
+}

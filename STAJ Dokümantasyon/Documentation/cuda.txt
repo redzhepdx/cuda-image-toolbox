@@ -1,0 +1,71 @@
+
+#include "cuda_runtime.h"
+#include "device_launch_parameters.h"
+
+#include <stdio.h>
+#include <math.h>
+
+#define MAX(X,Y) ((X) > (Y) ? (X) : (Y))
+#define MIN(X,Y) ((X) > (Y) ? (Y) : (X))
+
+__global__ void filterTest(	int *d_img, int *d_filter, int *d_out, 
+						   int imgRow, int imgCol ,int filterWidth ){
+							   int idx=threadIdx.x+blockDim.x*blockIdx.x;
+							   int idy=threadIdx.y+blockDim.y*blockIdx.y;
+							   int gid=idy*imgCol+idx;	
+
+							   if(idx>=imgCol || idy>=imgRow)
+								   return;
+
+							   int result = 0;
+
+							   for(int a = -filterWidth/2; a <= filterWidth/2; ++a){
+									for(int b = -filterWidth/2; b <= filterWidth/2; ++b){
+										int newIdx = idx + b;
+										int newIdy = idy + a;
+										int filterIndex = (a + filterWidth/2)*filterWidth + (b + filterWidth/2);
+										if( newIdy >= 0 && newIdy < imgRow && newIdx >= 0 && newIdx < imgCol)
+										result += d_filter[filterIndex] * d_img[newIdy * imgCol + newIdx];
+								    }
+							   }
+
+							   d_out[gid]=result;
+
+}
+
+
+void main(){
+	const int imgRow=5;
+	const int imgCol=5;
+	const int filterWidth=3;
+
+	int *d_img,*d_filter,*d_out;
+	int h_img[][imgCol]={{2,3,4,5,6},
+						{1,2,3,4,5},
+						{3,4,5,6,7},
+						{1,1,1,1,1},
+						{3,4,5,6,12}};
+	int h_filter[][filterWidth]={{1,2,1},
+								 {0,0,0},
+								 {-1,-2,-1}};
+	int h_out[5][5];
+
+	cudaMalloc((void**)&d_img,sizeof(int)*imgRow*imgCol);
+	cudaMemcpy(d_img,h_img,sizeof(int)*imgRow*imgCol,cudaMemcpyHostToDevice);
+	cudaMalloc((void**)&d_filter,sizeof(int)*filterWidth*filterWidth);
+	cudaMemcpy(d_filter,h_filter,sizeof(int)*filterWidth*filterWidth,cudaMemcpyHostToDevice);
+	cudaMalloc((void**)&d_out,sizeof(int)*imgRow*imgCol);
+
+	filterTest<<<dim3(1,imgRow,1),dim3(imgCol,1,1)>>>(d_img,d_filter,d_out,
+		imgRow,imgCol,filterWidth);
+
+	cudaMemcpy(h_out,d_out,sizeof(int)*imgRow*imgCol,cudaMemcpyDeviceToHost);
+
+	for(int i=0;i<imgRow;i++){
+		for(int j=0;j<imgCol;j++){
+			printf(" %d ",h_out[i][j]);
+		}	
+		printf("\n");
+	}
+
+}

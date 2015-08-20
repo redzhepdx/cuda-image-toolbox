@@ -1,0 +1,170 @@
+/*---------------------------------------------------------------------------*/
+/* Program:  wiener.c                                                        */
+/*                                                                           */
+/* Purpose:  This program demonstrates Wiener filtering in the frequency     */
+/*           domain.  Images are automatically converted to COMPLEX type     */
+/*           to be filtered and converted back to the origional type.        */
+/*           An estimate of the blurring function is specified in an         */
+/*           ascii convolution mask file.  No noise estimates are made.      */
+/*           The -t switch controls a clipping threshold which prevents      */
+/*           the amplification of noise when M[u][v] is small.  The current  */
+/*           default threshold of 0.005 works well in many case, but higher  */
+/*           values may be needed if noise levels are higher.                */
+/*                                                                           */
+/* Author:   John Gauch / Chunyen Liu                                        */
+/*                                                                           */
+/* Date:     Nov 14, 1995                                                    */
+/*                                                                           */
+/* Note:     Copyright (C) The University of Kansas, 1995                    */
+/*---------------------------------------------------------------------------*/
+#include <IM.h>
+
+/*---------------------------------------------------------------------------*/
+/* Purpose:  This is the main program.                                       */
+/*---------------------------------------------------------------------------*/
+int main(int argc, char *argv[])
+{
+   /* Image variables */
+   char Name1[50];
+   char Name2[50];
+   char Name3[50];
+   IM_TYPE *Image1;
+   IM_TYPE *Image2;
+   IM_TYPE *Image3;
+   COMPLEX_TYPE **Mask;
+   COMPLEX_TYPE **Data;
+   int PixType, Xdim, Ydim, Zdim, DimCnt;
+
+   /* Program variables */
+   FILE *fd;
+   int Debug = FALSE;
+   int i = 0, j, x, y;
+   int Rows, Cols;
+   float Temp, Total, RealPart, ImPart;
+   float Threshold = 0.1;
+   /* standard Wiener if gamma equals 1.0 */
+   /* otherwise, it is parametric Wiener  */
+   float Gamma = 1.0;
+   float Sn = 1000.0;		/* Assumed constant */
+   float Sf, Sh;
+
+   /* Interpret program options */
+   printf("WIENER Program - KUIM Version 1.0\n\n");
+   while ((++i < argc) && (argv[i][0] == '-'))
+      switch (argv[i][1])
+      {
+      case 't':
+	 if (sscanf(argv[++i], "%f", &Threshold) == 0)
+	    Error("Could not get Threshold argument");
+	 break;
+      case 'n':
+	 if (sscanf(argv[++i], "%f", &Sn) == 0)
+	    Error("Could not get Sn argument");
+	 break;
+      case 'd':
+	 Debug = TRUE;
+	 break;
+      default:
+	 Error("Invalid option encountered");
+	 break;
+      }
+
+   /* Check number of file names */
+   if (argc - i != 3)
+   {
+      fprintf(stderr, "Usage: wiener [options] maskfile infile outfile\n");
+      fprintf(stderr, "              [-n #]    Sn - average power spectrum of noise (1000.0)\n");
+      fprintf(stderr, "              [-t #]    Threshold value (0.1)\n");
+      exit(1);
+   }
+
+   /* Get image file names from argument list */
+   if (sscanf(argv[i++], "%s", Name1) == 0)
+      Error("Could not get mask file name");
+   if (sscanf(argv[i++], "%s", Name2) == 0)
+      Error("Could not get input file name");
+   if (sscanf(argv[i++], "%s", Name3) == 0)
+      Error("Could not get output file name");
+
+   /* Read input image and create output image */
+   Image2 = im_open(Name2, &PixType, &Xdim, &Ydim, &Zdim, &DimCnt);
+   if (DimCnt != 2)
+      Error("Can not process 1D or 3D images");
+   Data = (COMPLEX_TYPE **) im_alloc2D(Image2, COMPLEX);
+   im_read(Image2, COMPLEX, (char *) &(Data[0][0]));
+   Image3 = im_create(Name3, FLOAT, Xdim, Ydim, Zdim);
+
+   /* Read mask file into temporary image */
+   if ((fd = fopen(Name1, "r")) == NULL)
+      Error("Could not open mask file");
+   if (fscanf(fd, "%d %d", &Rows, &Cols) != 2)
+      Error("Could not read convolution mask size");
+   Image1 = im_create("/dev/null", COMPLEX, Xdim, Ydim, 1);
+   Mask = (COMPLEX_TYPE **) im_alloc2D(Image1, COMPLEX);
+
+   /* Initialize mask image */
+   for (y = 0; y < Ydim; y++)
+      for (x = 0; x < Xdim; x++)
+	 Mask[y][x].re = Mask[y][x].im = 0.0;
+
+   /* Read convolution mask */
+   Total = 0;
+   for (i = 0; i < Rows; i++)
+      for (j = 0; j < Cols; j++)
+      {
+	 if (fscanf(fd, "%f", &Temp) != 1)
+	    Error("Could not read convolution mask");
+	 Total += Temp;
+	 x = (j - Cols / 2 + Xdim) % Xdim;
+	 y = (i - Rows / 2 + Ydim) % Ydim;
+	 Mask[y][x].re = Temp;
+      }
+
+   /* Normalize area of mask */
+   if (Total == 0.0)
+      Total = 1.0;
+   for (i = 0; i < Rows; i++)
+      for (j = 0; j < Cols; j++)
+      {
+	 x = (j - Cols / 2 + Xdim) % Xdim;
+	 y = (i - Rows / 2 + Ydim) % Ydim;
+	 Mask[y][x].re /= Total;
+      }
+
+   /* Convert mask and image to frequency domain */
+   if (fft_2d(&(Mask[0][0]), Xdim, Ydim, -1) == INVALID)
+      Error("Could not perform forward FFT");
+   if (fft_2d(&(Data[0][0]), Xdim, Ydim, -1) == INVALID)
+      Error("Could not perform forward FFT");
+
+   /* Perform Wiener filtering */
+   for (y = 0; y < Ydim; y++)
+      for (x = 0; x < Xdim; x++)
+      {
+	 /* Calculate quotient of two complex values */
+	 Sh = Mask[y][x].re * Mask[y][x].re
+	    + Mask[y][x].im * Mask[y][x].im;
+	 if (Sh <= Threshold)
+	    Sh = Threshold;
+	 Sf = Data[y][x].re * Data[y][x].re
+	    + Data[y][x].im * Data[y][x].im;
+	 Temp = Sf / (Sh * Sf + Gamma * Sn);
+	 RealPart = Temp * (Mask[y][x].re * Data[y][x].re
+			    + Mask[y][x].im * Data[y][x].im);
+	 ImPart = Temp * (Mask[y][x].re * Data[y][x].im
+			  - Mask[y][x].im * Data[y][x].re);
+	 Data[y][x].re = RealPart;
+	 Data[y][x].im = ImPart;
+	 if (Debug == TRUE && x < 5 && y < 5)
+	    printf("(%d %d) = %f %f\n", x, y, RealPart, ImPart);
+      }
+
+   /* Convert image back to spatial domain */
+   if (fft_2d(&(Data[0][0]), Xdim, Ydim, 1) == INVALID)
+      Error("Could not perform inverse FFT");
+
+   /* Write information to output image */
+   im_write(Image3, COMPLEX, (char *) &(Data[0][0]));
+   im_free2D((char **) Data);
+   return (0);
+}

@@ -1,0 +1,92 @@
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <iostream>
+#include <stdio.h>
+#include <vector>
+#include <math.h>
+
+using namespace cv;
+using namespace std;
+float laplacian(Mat image,int x,int y)
+{
+
+    float sum=0;
+    float value=0;
+    for(int j = x-1; j <= x+ 1; j++)
+    {
+        uchar* data = image.ptr<uchar>(j);
+        for(int i = y-1; i <= y+1; i++)
+        {
+            if (j==x && i==y)
+            {
+                value=data[i]*(-8);
+            }
+
+            else value=data[i];
+
+         sum=sum+value;
+
+        }
+    }
+
+return sum;
+}
+Mat paddImage(Mat image,int size,int borderType)
+{
+Mat padded;
+int top, bottom, left, right;
+Scalar value;
+
+
+top = size; bottom = size;
+left = size; right = size;
+
+
+copyMakeBorder( image, padded, top, bottom, left, right, borderType);
+
+return padded;
+}
+
+
+int main( int argc, char** argv )
+{
+
+
+    if( argc != 2)
+    {
+        cout <<" Usage: display_image ImageToLoadAndDisplay" << endl;
+        return -1;
+    }
+
+    Mat blurred;
+
+    blurred=imread(argv[1], CV_LOAD_IMAGE_GRAYSCALE );
+
+    namedWindow("blurred", CV_WINDOW_AUTOSIZE );
+    imshow("blurred", blurred );
+
+      Mat padded=paddImage(blurred,1,BORDER_CONSTANT);
+        namedWindow("blurred pad", CV_WINDOW_AUTOSIZE );
+        imshow("blurred pad", padded );
+
+
+
+            for(int j = 1; j < padded.rows-1; j++)
+                        {
+                            uchar* data = padded.ptr<uchar>(j);
+                            for(int i = 1; i < padded.cols-1; i++)
+                            {
+
+                                data[i]=data[i]-((-1/9)*laplacian(padded,j,i))*data[i];
+
+                            }
+                        }
+
+
+            namedWindow("sharpen", CV_WINDOW_AUTOSIZE );
+            imshow("sharpen", padded );
+
+    waitKey(0);
+    return 0;
+}
