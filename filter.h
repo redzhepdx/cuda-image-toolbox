@@ -11,19 +11,19 @@
 using namespace cv;
 using namespace std;
 
-__global__ void filter(uchar* d_input, int *d_filter, uchar* d_output,\
+__global__ void filter(uchar* d_input, uchar* d_output,\
   int rows, int cols, int filterWidth) {
 
   int idx = threadIdx.x + blockDim.x * blockIdx.x;
   int idy = threadIdx.y + blockDim.y * blockIdx.y;
   int globalId = idy * cols + idx;
 
-  //d_output[globalId] = d_input[idy * cols + idx];
-  //return;
+  d_output[globalId] = d_input[idy * cols + idx];
+  return;
 
   if (idx >= cols) {
     if (idy >= rows) {
-      //return; //Invalid location, do nothing.
+      return; //Invalid location, do nothing.
     }
   }
 
@@ -32,7 +32,6 @@ __global__ void filter(uchar* d_input, int *d_filter, uchar* d_output,\
     for (int j = -filterWidth/2; j <= filterWidth/2; j++) {
       int x = idx + i;
       int y = idy + j;
-      int filterIndex = (x + filterWidth/2)*filterWidth + (y + filterWidth/2);
       if (y >= 0 && x >= 0 && y < rows && x < cols) {
         result += d_input[y * cols + x];
       }
@@ -45,8 +44,7 @@ __global__ void filter(uchar* d_input, int *d_filter, uchar* d_output,\
 void transform(){
 	const int filterWidth=3;
 
-	uchar *d_img,*d_out;
-  int *d_filter;
+	uchar *d_img,*d_filter,*d_out;
   Mat img;
   Mat image;
   img = imread("./test.png", CV_LOAD_IMAGE_COLOR);
@@ -55,33 +53,33 @@ void transform(){
 	int Cols = img.cols;
   int imgRow = Rows;
   int imgCol = Cols;
-	uchar* imgR = (uchar*)malloc(Rows * Cols * sizeof(uchar));
-	uchar* imgG = (uchar*)malloc(Rows * Cols * sizeof(uchar*));
-	uchar* imgB = (uchar*)malloc(Rows * Cols * sizeof(uchar*));
+	uchar** imgR = (uchar**)malloc(Rows * sizeof(uchar*));
+	uchar** imgG = (uchar**)malloc(Rows * sizeof(uchar*));
+	uchar** imgB = (uchar**)malloc(Rows * sizeof(uchar*));
 
 	for (int i = 0; i < Rows; i++)
 	{
-		//imgR[i] = (uchar*)malloc(Cols * sizeof(uchar));
-		//imgG[i] = (uchar*)malloc(Cols * sizeof(uchar));
-		//imgB[i] = (uchar*)malloc(Cols * sizeof(uchar));
+		imgR[i] = (uchar*)malloc(Cols * sizeof(uchar));
+		imgG[i] = (uchar*)malloc(Cols * sizeof(uchar));
+		imgB[i] = (uchar*)malloc(Cols * sizeof(uchar));
 		for (int j = 0; j < img.cols; j++)
 		{
-			imgB[i * Cols + j] = img.at<cv::Vec3b>(i, j)[0];
-			imgG[i * Cols + j] = img.at<cv::Vec3b>(i, j)[1];
-			imgR[i * Cols + j] = img.at<cv::Vec3b>(i, j)[2];
+			imgB[i][j] = img.at<cv::Vec3b>(i, j)[0];
+			imgG[i][j] = img.at<cv::Vec3b>(i, j)[1];
+			imgR[i][j] = img.at<cv::Vec3b>(i, j)[2];
 		}
 	}
-	int h_filter[][filterWidth]={{1,1,1},
+	uchar h_filter[][filterWidth]={{1,1,1},
 								 {1,1,1},
 								 {1,1,1}};
 	uchar h_out[img.rows][img.cols];
 	cudaMalloc((void**)&d_img,sizeof(uchar)*imgRow*imgCol);
 	cudaMemcpy(d_img,imgR,sizeof(uchar)*imgRow*imgCol,cudaMemcpyHostToDevice);
-	cudaMalloc((void**)&d_filter,sizeof(int)*filterWidth*filterWidth);
-	cudaMemcpy(d_filter,h_filter,sizeof(int)*filterWidth*filterWidth,cudaMemcpyHostToDevice);
+	cudaMalloc((void**)&d_filter,sizeof(uchar)*filterWidth*filterWidth);
+	cudaMemcpy(d_filter,h_filter,sizeof(uchar)*filterWidth*filterWidth,cudaMemcpyHostToDevice);
 	cudaMalloc((void**)&d_out,sizeof(uchar)*imgRow*imgCol);
 
-  filter<<<dim3(1,imgRow,1),dim3(imgCol,1,1)>>>(d_img,d_filter,d_out,imgRow,imgCol,filterWidth);
+  filter<<<dim3(1,imgRow,1),dim3(imgCol,1,1)>>>(d_img,d_out,imgRow,imgCol,filterWidth);
 	cudaMemcpy(h_out,d_out,sizeof(uchar)*imgRow*imgCol,cudaMemcpyDeviceToHost);
   /*for (int i=0; i < img.rows; i++) {
     for (int j=0; j < img.cols; j++) {
@@ -89,25 +87,25 @@ void transform(){
     }
     puts("");
   }
-  printf("********************\n");*/
+  printf("********************\n");
   for (int i=0; i < img.rows; i++) {
     for (int j=0; j < img.cols; j++) {
       printf("%u\t", h_out[i][j]);
       image.at<cv::Vec3b>(i, j)[2] = h_out[i][j];
     }
     puts("");
-  }
+  }*/
   imshow("Display window", image);
   waitKey(0);
-  /*printf("********************\n");
+  printf("********************\n");
   /**********/
   cudaMalloc((void**)&d_img,sizeof(uchar)*imgRow*imgCol);
   cudaMemcpy(d_img,imgG,sizeof(uchar)*imgRow*imgCol,cudaMemcpyHostToDevice);
-  cudaMalloc((void**)&d_filter,sizeof(int)*filterWidth*filterWidth);
-  cudaMemcpy(d_filter,h_filter,sizeof(int)*filterWidth*filterWidth,cudaMemcpyHostToDevice);
+  cudaMalloc((void**)&d_filter,sizeof(uchar)*filterWidth*filterWidth);
+  cudaMemcpy(d_filter,h_filter,sizeof(uchar)*filterWidth*filterWidth,cudaMemcpyHostToDevice);
   cudaMalloc((void**)&d_out,sizeof(uchar)*imgRow*imgCol);
 
-  filter<<<dim3(1,imgRow,1),dim3(imgCol,1,1)>>>(d_img,d_filter,d_out,imgRow,imgCol,filterWidth);
+  filter<<<dim3(1,imgRow,1),dim3(imgCol,1,1)>>>(d_img,d_out,imgRow,imgCol,filterWidth);
 
   cudaMemcpy(h_out,d_out,sizeof(uchar)*imgRow*imgCol,cudaMemcpyDeviceToHost);
   for (int i=0; i < img.rows; i++) {
@@ -123,12 +121,18 @@ void transform(){
 
   cudaMalloc((void**)&d_img,sizeof(uchar)*imgRow*imgCol);
   cudaMemcpy(d_img,imgB,sizeof(uchar)*imgRow*imgCol,cudaMemcpyHostToDevice);
-  cudaMalloc((void**)&d_filter,sizeof(int)*filterWidth*filterWidth);
-  cudaMemcpy(d_filter,h_filter,sizeof(int)*filterWidth*filterWidth,cudaMemcpyHostToDevice);
+  cudaMalloc((void**)&d_filter,sizeof(uchar)*filterWidth*filterWidth);
+  cudaMemcpy(d_filter,h_filter,sizeof(uchar)*filterWidth*filterWidth,cudaMemcpyHostToDevice);
   cudaMalloc((void**)&d_out,sizeof(uchar)*imgRow*imgCol);
 
-  filter<<<dim3(1,imgRow,1),dim3(imgCol,1,1)>>>(d_img,d_filter,d_out,imgRow,imgCol,filterWidth);
+  filter<<<dim3(1,imgRow,1),dim3(imgCol,1,1)>>>(d_img,d_out,imgRow,imgCol,filterWidth);
   cudaMemcpy(h_out,d_out,sizeof(uchar)*imgRow*imgCol,cudaMemcpyDeviceToHost);
+  for (int i=0; i < img.rows; i++) {
+    for (int j=0; j < img.cols; j++) {
+      printf("%u\t", imgR[i][j]);
+    }
+    puts("");
+  }
   printf("********************\n");
   for (int i=0; i < img.rows; i++) {
     for (int j=0; j < img.cols; j++) {
