@@ -18,17 +18,10 @@ __global__ void medianFilter(unsigned char* d_input, unsigned char* d_output, in
 
 	int idx = threadIdx.x + blockIdx.x*blockDim.x;
 	int idy = threadIdx.y + blockIdx.y*blockDim.y;
-	int tidx = threadIdx.x;
-	int tidy = threadIdx.y;
-
-	//__shared__ unsigned char shared_filter[FILTER_WIDTH*FILTER_WIDTH];
 
 	int mid = idy*cols + idx;
 
 	int size = FILTER_WIDTH*FILTER_WIDTH;
-
-	
-	
 
 	if (idx >= cols || idy >= rows)
 		return;
@@ -37,6 +30,7 @@ __global__ void medianFilter(unsigned char* d_input, unsigned char* d_output, in
 
 	unsigned char medianFilt[FILTER_WIDTH*FILTER_WIDTH];
 
+	//CONVOLUTION 
 	for (int i = -FILTER_WIDTH / 2; i <= FILTER_WIDTH / 2; i++){
 
 		for (int j = -FILTER_WIDTH / 2; j <= FILTER_WIDTH / 2; j++){
@@ -58,57 +52,49 @@ __global__ void medianFilter(unsigned char* d_input, unsigned char* d_output, in
 	}
 
 	//QUICK_SELECT 
-	/*int low, high;
+	int low, high;
 	int median;
 	int middle, ll, hh;
 
 	low = 0; high = size - 1; median = (low + high) / 2;
-	for (;;){
-		if (high <= low)
+	for (;;) {
+		if (high <= low){ /* One element only */
 			value = medianFilt[median];
-		if (high = low + 1){
-			if (medianFilt[low]>medianFilt[high])
-				ELEM_SWAP(medianFilt[low],medianFilt[high]);
+			break;
+		}
+		if (high == low + 1) {  /* Two elements only */
+			if (medianFilt[low] > medianFilt[high])
+				ELEM_SWAP(medianFilt[low], medianFilt[high]);
 			value = medianFilt[median];
-
-			middle = (low + high) / 2;
-			if (medianFilt[middle] > medianFilt[high]) ELEM_SWAP(medianFilt[middle], medianFilt[high]);
-			if (medianFilt[low] > medianFilt[high]) 	ELEM_SWAP(medianFilt[low], medianFilt[high]);
-			if (medianFilt[middle] > medianFilt[low])	ELEM_SWAP(medianFilt[middle], medianFilt[low]);
-
-			ELEM_SWAP(medianFilt[middle], medianFilt[low + 1]);
-
-			ll = low + 1;
-			hh = high;
-			for (;;) {
-				do ll++; while (medianFilt[low] > medianFilt[ll]);
-				do hh--; while (medianFilt[hh]  > medianFilt[low]);
-
-				if (hh < ll)
-					break;
-
-				ELEM_SWAP(medianFilt[ll], medianFilt[hh]);
-			}
-
-			ELEM_SWAP(medianFilt[low], medianFilt[hh]);
-
-			if (hh <= median)
-				low = ll;
-			if (hh >= median)
-				high = hh - 1;
-
+			break;
 		}
 
-	}*/
-	//SUCK  MY DICK QUICK SELECT
-	for (int i = 0; i < FILTER_WIDTH*FILTER_WIDTH - 1; i++){
-		for (int j = i + 1; j < FILTER_WIDTH*FILTER_WIDTH; j++){
-			if (medianFilt[i] < medianFilt[j]){
-				ELEM_SWAP(medianFilt[i], medianFilt[j]);
-			}
+		middle = (low + high) / 2;
+		if (medianFilt[middle] > medianFilt[high])    ELEM_SWAP(medianFilt[middle], medianFilt[high]);
+		if (medianFilt[low] > medianFilt[high])       ELEM_SWAP(medianFilt[low], medianFilt[high]);
+		if (medianFilt[middle] > medianFilt[low])     ELEM_SWAP(medianFilt[middle], medianFilt[low]);
+
+		ELEM_SWAP(medianFilt[middle], medianFilt[low + 1]);
+
+		ll = low + 1;
+		hh = high;
+		for (;;) {
+			do ll++; while (medianFilt[low] > medianFilt[ll]);
+			do hh--; while (medianFilt[hh]  > medianFilt[low]);
+
+			if (hh < ll)
+				break;
+
+			ELEM_SWAP(medianFilt[ll], medianFilt[hh]);
 		}
+
+		ELEM_SWAP(medianFilt[low], medianFilt[hh]);
+
+		if (hh <= median)
+			low = ll;
+		if (hh >= median)
+			high = hh - 1;
 	}
-	value = medianFilt[FILTER_WIDTH*FILTER_WIDTH / 2];
 
 	d_output[mid] = value;
 	
