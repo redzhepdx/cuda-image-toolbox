@@ -41,7 +41,7 @@ __global__ void medianFilter(unsigned char* d_input, unsigned char* d_output, in
 			int filt_x = i + FILTER_WIDTH / 2;
 			int filt_y = j + FILTER_WIDTH / 2;
 
-			if (x>1 && x<cols && y>1 && y<rows){
+			if (x=>0 && x<cols && y=>0 && y<rows){
 
 				medianFilt[filt_y*FILTER_WIDTH + filt_x] = d_input[y*cols + x];
 
