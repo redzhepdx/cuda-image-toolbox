@@ -1,0 +1,192 @@
+#include "cuda_runtime.h"
+#include "device_launch_parameters.h"
+#include <stdio.h>
+#include <math.h>
+
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+
+#include <iostream>
+
+using namespace cv;
+using namespace std;
+
+#define M_PI 3.0
+
+__global__ void gaussian_filter(unsigned char* d_input, unsigned char* d_output, double* d_filter, int rows, int cols, int filter_width){
+
+	int idx = threadIdx.x + blockIdx.x*blockDim.x;
+	int idy = threadIdx.y + blockIdx.y*blockDim.y;
+
+	int mid = idy*cols + idx;
+
+	if (idx >= cols || idy >= rows)
+		return;
+
+	unsigned int sum = 0;
+
+	for (int i = -filter_width / 2; i < filter_width / 2; i++){
+
+		for (int j = -filter_width / 2; j < filter_width / 2; j++){
+
+			int x = i + idx;
+			int y = j + idy;
+
+			int filt_x = i + filter_width / 2;
+			int filt_y = j + filter_width / 2;
+
+			if (x >= 0 && x < cols && y >= 0 && y < rows){
+				sum += d_input[y*cols + x] * d_filter[filt_y*filter_width + filt_x];
+			}
+
+		}
+
+	}
+	d_output[mid] = (unsigned char)sum/filter_width*filter_width ;
+}
+
+void createFilter(double *h_filter, int filterWidth)
+{
+	double sigma;
+	printf("\nsg:\t");
+	scanf("%lf", &sigma);
+	double r, s = 2.0 * sigma * sigma;
+
+	// sum is for normalization
+	double sum = 0.0;
+
+	// generate 5x5 kernel
+	for (int x = -filterWidth / 2; x <= filterWidth / 2; x++)
+	{
+		for (int y = -filterWidth / 2; y <= filterWidth / 2; y++)
+		{
+			r = sqrt(x*x + y*y);
+			h_filter[(x + (int)filterWidth / 2) * filterWidth + (y + (int)filterWidth / 2)] = (exp(-(r*r) / s)) / (M_PI * s);
+			sum += h_filter[(x + (int)filterWidth / 2) * filterWidth + (y + (int)filterWidth / 2)];
+		}
+	}
+
+	// normalize the Kernel
+	for (int i = 0; i < filterWidth; ++i)
+		for (int j = 0; j < filterWidth; ++j)
+			h_filter[i* filterWidth + j] /= sum;
+
+}
+
+int main()
+{
+	unsigned char *d_img, *d_out;
+
+	Mat image, img;
+
+	double *h_filter,*d_filter;
+
+	int filterWidth;
+
+
+	printf("\nfw:\t");
+	scanf("%d", &filterWidth);
+
+
+	h_filter = (double*)malloc(filterWidth * filterWidth * sizeof(double));
+
+	createFilter(h_filter, filterWidth);
+
+	for (int i = 0; i < filterWidth; ++i){
+		for (int j = 0; j < filterWidth; ++j)
+			printf("%f\t", h_filter[i* filterWidth + j]);
+		printf("\n");
+	}
+
+
+	img = imread("lana.jpg", CV_LOAD_IMAGE_COLOR);
+
+	if (!img.data){
+
+		printf("Couldn't open current image !!! ");
+		return -1;
+	}
+
+	imshow("Display Window", img);
+	waitKey(0);
+	image = Mat::zeros(img.rows, img.cols, CV_8UC3);
+
+	int Rows = img.rows;
+	int Cols = img.cols;
+
+	unsigned char* imgR = (unsigned char*)malloc(Rows*Cols*sizeof(unsigned char));
+	unsigned char* imgG = (unsigned char*)malloc(Rows*Cols*sizeof(unsigned char));
+	unsigned char* imgB = (unsigned char*)malloc(Rows*Cols*sizeof(unsigned char));
+
+	for (int i = 0; i<Rows; i++){
+
+		for (int j = 0; j<Cols; j++){
+			//B-G-R
+			imgB[i*Cols + j] = img.at<cv::Vec3b>(i, j)[0];
+			imgG[i*Cols + j] = img.at<cv::Vec3b>(i, j)[1];
+			imgR[i*Cols + j] = img.at<cv::Vec3b>(i, j)[2];
+
+		}
+
+	}
+
+	unsigned char* h_out = (unsigned char*)malloc(Rows*Cols*sizeof(unsigned char));
+
+	cudaMalloc((void**)&d_img, Rows*Cols*sizeof(unsigned char));
+	cudaMemcpy(d_img, imgB, Rows*Cols*sizeof(unsigned char), cudaMemcpyHostToDevice);
+	cudaMalloc((void**)&d_filter, filterWidth*filterWidth*sizeof(double));
+	cudaMemcpy(d_filter, h_filter, filterWidth*filterWidth*sizeof(double), cudaMemcpyHostToDevice);
+	cudaMalloc((void**)&d_out, Rows*Cols*sizeof(unsigned char));
+
+	dim3 blockSize(filterWidth, filterWidth, 1);
+	dim3 gridSize((int)((Cols - 1) / blockSize.x) + 1, (int)((Rows - 1) / blockSize.y) + 1, 1);
+
+	gaussian_filter << <gridSize, blockSize >> >(d_img, d_out, d_filter, Rows, Cols, filterWidth);
+	cudaMemcpy(h_out, d_out, Rows*Cols*sizeof(unsigned char), cudaMemcpyDeviceToHost);
+
+	for (int i = 0; i < Rows; i++){
+		for (int j = 0; j < Cols; j++){
+			image.at<cv::Vec3b>(i, j)[0] = h_out[i*Cols + j];
+		}
+	}
+
+	cudaMalloc((void**)&d_img, Rows*Cols*sizeof(unsigned char));
+	cudaMemcpy(d_img, imgG, Rows*Cols*sizeof(unsigned char), cudaMemcpyHostToDevice);
+	cudaMalloc((void**)&d_filter, filterWidth*filterWidth*sizeof(double));
+	cudaMemcpy(d_filter, h_filter, filterWidth*filterWidth*sizeof(double), cudaMemcpyHostToDevice);
+	cudaMalloc((void**)&d_out, Rows*Cols*sizeof(unsigned char));
+
+
+	gaussian_filter << <gridSize, blockSize >> >(d_img, d_out, d_filter, Rows, Cols, filterWidth);
+	cudaMemcpy(h_out, d_out, Rows*Cols*sizeof(unsigned char), cudaMemcpyDeviceToHost);
+
+	for (int i = 0; i < Rows; i++){
+		for (int j = 0; j < Cols; j++){
+			image.at<cv::Vec3b>(i, j)[1] = h_out[i*Cols + j];
+		}
+	}
+
+	cudaMalloc((void**)&d_img, Rows*Cols*sizeof(unsigned char));
+	cudaMemcpy(d_img, imgR, Rows*Cols*sizeof(unsigned char), cudaMemcpyHostToDevice);
+	cudaMalloc((void**)&d_filter, filterWidth*filterWidth*sizeof(double));
+	cudaMemcpy(d_filter, h_filter, filterWidth*filterWidth*sizeof(double), cudaMemcpyHostToDevice);
+	cudaMalloc((void**)&d_out, Rows*Cols*sizeof(unsigned char));
+
+	gaussian_filter << <gridSize, blockSize >> >(d_img, d_out, d_filter, Rows, Cols, filterWidth);
+	cudaMemcpy(h_out, d_out, Rows*Cols*sizeof(unsigned char), cudaMemcpyDeviceToHost);
+
+	for (int i = 0; i < Rows; i++){
+		for (int j = 0; j < Cols; j++){
+
+			image.at<cv::Vec3b>(i, j)[2] = h_out[i*Cols + j];
+		}
+
+	}
+	
+
+
+	imshow("Display Window", image);
+	waitKey(0);
+
+
+}
