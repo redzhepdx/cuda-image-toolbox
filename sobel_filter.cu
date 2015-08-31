@@ -42,8 +42,8 @@ int applySobelFilter(Mat* in_img, Mat* out_img){
         printf("ERROR: malloc - Couldn't allocate memory for the image channel input, on the host.");
         return -1;
     }
-    for(int i = 0; i < ROWS; i++)
-        for(int j = 0; j < COLS; j++)
+    for(int i = 0; i < ROWS; ++i)
+        for(int j = 0; j < COLS; ++j)
             h_img[i*COLS + j] = in_img.at<uchar>(i, j);
 
     // Transfer the channel to the device
@@ -72,8 +72,8 @@ int applySobelFilter(Mat* in_img, Mat* out_img){
     checkCudaErrors(cudaMemcpy(h_out, d_out, ROWS*COLS*sizeof(unsigned char), cudaMemcpyDeviceToHost));
 
     // Save the channel to the Mat
-    for(int i = 0; i < ROWS; i++)
-        for(int j = 0; j < COLS; j++)
+    for(int i = 0; i < ROWS; ++i)
+        for(int j = 0; j < COLS; ++j)
             out_img->at<uchar>(i, j) = h_out[i*COLS + j];
 
     // Cleanup
