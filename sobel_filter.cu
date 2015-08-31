@@ -44,7 +44,7 @@ int applySobelFilter(Mat* in_img, Mat* out_img){
     }
     for(int i = 0; i < ROWS; i++)
         for(int j = 0; j < COLS; j++)
-            h_img[i*COLS + j] = image.at<uchar>(i, j);
+            h_img[i*COLS + j] = in_img.at<uchar>(i, j);
 
     // Transfer the channel to the device
     unsigned char *d_img;
