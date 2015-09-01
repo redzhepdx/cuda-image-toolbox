@@ -1,0 +1,186 @@
+#include "opencv2/highgui/highgui.hpp"
+#include "opencv\cv.h"
+#include "opencv\highgui.h"
+#include <iostream>
+
+#include "cuda_runtime.h"
+#include "device_launch_parameters.h"
+
+#include <stdio.h>
+
+
+using namespace cv;
+using namespace std;
+
+typedef struct CL{
+	unsigned char red_value;
+	unsigned char green_value;
+	unsigned char blue_value;
+	int cluster_index=0;
+
+} CLUSTER;
+
+__global__ void Kmeans(int *d_out, unsigned char *d_imageR, unsigned char  *d_imageG, unsigned char  *d_imageB, int Rows, int Cols, CLUSTER *d_clusters, int clusternum){
+
+	int idx = threadIdx.x + blockDim.x * blockIdx.x;
+	int idy = threadIdx.y + blockDim.y * blockIdx.y;
+	int globalId = idy * Cols + idx;
+
+	if (idx > Cols || idy > Rows){
+		return;
+	}
+
+	int sum = 0;
+	int lowest = abs(d_clusters[0].red_value - d_imageR[globalId]) + abs(d_clusters[0].green_value - d_imageG[globalId]) + abs(d_clusters[0].blue_value - d_imageB[globalId]);
+	d_out[globalId] = d_clusters[0].cluster_index;
+	for (int i = 0; i < clusternum; i++){
+
+		sum = abs(d_clusters[i].red_value - d_imageR[globalId])
+			+ abs(d_clusters[i].green_value - d_imageG[globalId])
+			+ abs(d_clusters[i].blue_value - d_imageB[globalId]);
+		if (sum <= lowest){
+			lowest = sum;
+			d_out[globalId] = d_clusters[i].cluster_index;
+		}
+
+	}
+
+}
+
+void main(){
+	Mat img;
+
+	
+		img = imread("images/1.jpg", CV_LOAD_IMAGE_COLOR);
+
+		if (!img.data)                              // Check for invalid input
+		{
+			cout << "Could not open or find the image" << std::endl;
+			return;
+		}
+
+		unsigned char *d_imageR, *d_imageG, *d_imageB;
+		int Rows = img.rows;
+		int Cols = img.cols;
+
+		dim3 DimGrid((int)((Cols - 1) / 32) + 1, (int)((Rows - 1) / 32) + 1, 1);
+		dim3 DimBlock(32, 32, 1);
+
+
+		int clusternum, maxiterationnum;
+		printf("\nEnter cluster num:\t");
+		scanf("%d", &clusternum);
+		printf("\nEnter iteration num:\t");
+		scanf("%d", &maxiterationnum);
+
+		CLUSTER *clusters, *d_clusters;
+
+		clusters = (CLUSTER*)malloc(clusternum * sizeof(CLUSTER));
+
+
+		for (int j = 0; j < clusternum; j++){
+
+
+			int x = rand() % Rows;
+			int	y = rand() % Cols;
+
+
+			clusters[j].cluster_index = j;
+			clusters[j].blue_value = img.at<cv::Vec3b>(x, y)[0];
+			clusters[j].green_value = img.at<cv::Vec3b>(x, y)[1];
+			clusters[j].red_value = img.at<cv::Vec3b>(x, y)[2];
+		}
+		unsigned char *imgR = (unsigned char*)malloc(Rows * Cols * sizeof(unsigned char));
+		unsigned char *imgG = (unsigned char*)malloc(Rows * Cols * sizeof(unsigned char));
+		unsigned char *imgB = (unsigned char*)malloc(Rows * Cols * sizeof(unsigned char));
+
+		for (int i = 0; i < Rows; i++){
+			for (int j = 0; j < Cols; j++){
+				imgB[i * Cols + j] = img.at<cv::Vec3b>(i, j)[0];
+				imgG[i * Cols + j] = img.at<cv::Vec3b>(i, j)[1];
+				imgR[i * Cols + j] = img.at<cv::Vec3b>(i, j)[2];
+			}
+		}
+		int *d_out, *h_out;
+		h_out = (int*)malloc(sizeof(int)*Rows*Cols);
+		for (int i = 0; i < maxiterationnum; i++){
+		
+			//iterasyon sayisi kadar kernel cagirilir
+
+		
+			cudaMalloc((void**)&d_out, sizeof(int)*Rows*Cols);
+			cudaMalloc((void**)&d_imageR, sizeof(unsigned char)*Rows*Cols);
+			cudaMemcpy(d_imageR, imgR, sizeof(unsigned char)*Rows*Cols, cudaMemcpyHostToDevice);
+			cudaMalloc((void**)&d_imageG, sizeof(unsigned char)*Rows*Cols);
+			cudaMemcpy(d_imageG, imgG, sizeof(unsigned char)*Rows*Cols, cudaMemcpyHostToDevice);
+			cudaMalloc((void**)&d_imageB, sizeof(unsigned char)*Rows*Cols);
+			cudaMemcpy(d_imageB, imgB, sizeof(unsigned char)*Rows*Cols, cudaMemcpyHostToDevice);
+			cudaMalloc((void**)&d_clusters, sizeof(CLUSTER)*clusternum);
+			cudaMemcpy(d_clusters, clusters, sizeof(CLUSTER)*clusternum, cudaMemcpyHostToDevice);
+
+			Kmeans << <DimGrid, DimBlock >> >(d_out, d_imageR, d_imageG, d_imageB, Rows, Cols, d_clusters, clusternum);
+			cudaMemcpy(h_out, d_out, sizeof(int)*Rows*Cols, cudaMemcpyDeviceToHost);
+
+			for (int i = 0; i < Rows; i++){
+				for (int j = 0; j < Cols; j++){
+					printf("%d ", h_out[i*Cols + j]);
+				}
+				printf("\n");
+			}
+			printf("\n\n");
+			int clustersum[15][5]; ///  cluster kadar satir // R  G  B ve counter kadar sutun 
+			for (int i = 0; i < 15; i++){
+				for (int j = 0; j < 5; j++){
+					clustersum[i][j] = 0;
+				}
+			}
+
+			for (int i = 0; i < Rows; i++){
+				for (int j = 0; j < Cols; j++){
+					for (int k = 0; k < clusternum; k++){
+
+						if (h_out[i*Cols + j] == clusters[k].cluster_index){
+
+							clustersum[clusters[k].cluster_index][0] += (int)img.at<cv::Vec3b>(i, j)[2];
+							clustersum[clusters[k].cluster_index][1] += (int)img.at<cv::Vec3b>(i, j)[1];
+							clustersum[clusters[k].cluster_index][2] += (int)img.at<cv::Vec3b>(i, j)[0];
+							clustersum[clusters[k].cluster_index][3]++;
+
+						}
+
+					}
+				}
+			}
+			for (int i = 0; i < clusternum; i++){
+				clusters[i].red_value = (unsigned char)(clustersum[i][0] / clustersum[i][3]);
+				clusters[i].green_value = (unsigned char)(clustersum[i][1] / clustersum[i][3]);
+				clusters[i].blue_value = (unsigned char)(clustersum[i][2] / clustersum[i][3]);
+			}
+		
+			cudaFree(d_out);
+			cudaFree(d_imageR);
+			cudaFree(d_imageG);
+			cudaFree(d_imageB);
+			cudaFree(d_clusters);
+			//cudaFree(h_out);
+		}
+		imshow("Display Window", img);
+		waitKey(0);
+
+		Mat resultimg;
+		resultimg = Mat::zeros(img.rows, img.cols, CV_8UC3);
+
+		for (int i = 0; i < img.rows; i++) {
+			for (int j = 0; j < img.cols; j++) {
+				resultimg.at<cv::Vec3b>(i, j)[2] = h_out[i*Cols + j] * (int)(255 / (clusternum+1));
+				resultimg.at<cv::Vec3b>(i, j)[1] = h_out[i*Cols + j] * (int)(255 / (clusternum+1));
+				resultimg.at<cv::Vec3b>(i, j)[0] = h_out[i*Cols + j] * (int)(255 / (clusternum+1));
+			}
+			puts("");
+		}
+		free(h_out);
+		imshow("Window", resultimg);
+		waitKey(0);
+		imwrite("imagesout/1km.jpg", resultimg);
+
+}
